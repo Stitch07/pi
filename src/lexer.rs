@@ -87,6 +87,38 @@ impl<'a> Lexer<'a> {
             Some(c) => match c {
                 ' ' | '\t' | '\n' => self.lex()?,
                 '0'..='9' => {
+                    // leading 0 indicates different base
+                    // 0x => hexadecimal, 0b => binary, 0o => octal
+                    if c == '0' {
+                        let radix = match self.chars.peek() {
+                            Some('x') => Some(16),
+                            Some('o') => Some(8),
+                            Some('b') => Some(2),
+                            _ => None
+                        };
+                        if let Some(rdx) = radix {
+                            self.next();
+                            let mut num = String::new();
+                            let start_pos = self.position();
+                            while let Some(c) = self.chars.peek() {
+                                match c {
+                                    '0' | '1' => num.push(self.next().unwrap()),
+                                    '2'...'7' if rdx > 2 => num.push(self.next().unwrap()),
+                                    '8' | '9' | 'a'...'f' | 'A'...'F' if rdx > 8 => {
+                                        num.push(self.next().unwrap());
+                                    }
+                                    _ => break
+                                }
+                            };
+                            let n = match u64::from_str_radix(&num, rdx) {
+                                Ok(n) => n,
+                                Err(_) => return Err(ParseError::UnexpectedToken(start_pos))
+                            };
+                            return Ok(Token::Number(n as f64));
+                        } else {
+                            return Ok(Token::Number(0f64));
+                        }
+                    }
                     let start_pos = self.position();
                     let mut mantissa = c.to_string();
                     let mut exponent = String::new();
