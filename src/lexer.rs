@@ -67,6 +67,17 @@ pub struct Lexer<'a> {
     constants: HashMap<&'static str, f64>
 }
 
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.lex() {
+            Ok(Token::EOF) | Err(_) => None,
+            Ok(token) => Some(token),
+        }
+    }
+}
+
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Lexer<'a> {
         Lexer {
@@ -79,7 +90,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next(&mut self) -> Option<char> {
+    fn consume(&mut self) -> Option<char> {
         let c = self.chars.next();
         if let Some('\n') = c {
             self.column = 0;
@@ -91,7 +102,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn lex(&mut self) -> Result<Token, ParseError> {
-        Ok(match self.next() {
+        Ok(match self.consume() {
             Some(c) => match c {
                 ' ' | '\t' | '\n' => self.lex()?,
                 '0'..='9' => {
@@ -105,15 +116,15 @@ impl<'a> Lexer<'a> {
                             _ => None
                         };
                         if let Some(rdx) = radix {
-                            self.next();
+                            self.consume();
                             let mut num = String::new();
-                            let start_pos = self.position();
+                            let start_pos = self.current_position();
                             while let Some(c) = self.chars.peek() {
                                 match c {
-                                    '0' | '1' => num.push(self.next().unwrap()),
-                                    '2'...'7' if rdx > 2 => num.push(self.next().unwrap()),
+                                    '0' | '1' => num.push(self.consume().unwrap()),
+                                    '2'...'7' if rdx > 2 => num.push(self.consume().unwrap()),
                                     '8' | '9' | 'a'...'f' | 'A'...'F' if rdx > 8 => {
-                                        num.push(self.next().unwrap());
+                                        num.push(self.consume().unwrap());
                                     }
                                     _ => break
                                 }
@@ -127,7 +138,7 @@ impl<'a> Lexer<'a> {
                             return Ok(Token::Number(0f64));
                         }
                     }
-                    let start_pos = self.position();
+                    let start_pos = self.current_position();
                     let mut mantissa = c.to_string();
                     let mut exponent = String::new();
                     let mut in_exp = false;
@@ -136,30 +147,30 @@ impl<'a> Lexer<'a> {
                     while let Some(c) = self.chars.peek() {
                         match c {
                             '_' => {
-                                self.next().unwrap();
+                                self.consume().unwrap();
                                 if self.chars.peek() == Some(&'_') {
-                                    self.next().unwrap();
-                                    return Err(ParseError::UnexpectedToken(self.position()));
+                                    self.consume().unwrap();
+                                    return Err(ParseError::UnexpectedToken(self.current_position()));
                                 }
                                 continue;
                             }
                             '0'..='9' => {
                                 if in_exp {
-                                    exponent.push(self.next().unwrap());
+                                    exponent.push(self.consume().unwrap());
                                 } else {
-                                    mantissa.push(self.next().unwrap());
+                                    mantissa.push(self.consume().unwrap());
                                 }
                             }
                             'e' if !in_exp => {
-                                self.next().unwrap();
+                                self.consume().unwrap();
                                 in_exp = true;
                                 match self.chars.peek() {
                                     Some('-') => {
-                                        self.next().unwrap();
+                                        self.consume().unwrap();
                                         exponent.push('-');
                                     }
                                     Some('+') => {
-                                        self.next().unwrap();
+                                        self.consume().unwrap();
                                     }
                                     _ => {}
                                 }
@@ -168,9 +179,9 @@ impl<'a> Lexer<'a> {
                             '.' if !in_exp => {
                                 if !one_dot {
                                     one_dot = true;
-                                    mantissa.push(self.next().unwrap());
+                                    mantissa.push(self.consume().unwrap());
                                     if self.chars.peek() == Some(&'_') {
-                                        return Err(ParseError::UnexpectedToken(self.position()));
+                                        return Err(ParseError::UnexpectedToken(self.current_position()));
                                     }
                                 } else {
                                     break;
@@ -196,11 +207,11 @@ impl<'a> Lexer<'a> {
                 }
                 'a'...'z' | 'A'...'Z' => {
                     let mut ident = c.to_string();
-                    let start_pos = self.position();
+                    let start_pos = self.current_position();
                     while let Some(c) = self.chars.peek() {
                         match c {
                             'a'...'z' | 'A'...'Z' | '0'...'9' | '_' => {
-                                ident.push(self.next().unwrap())
+                                ident.push(self.consume().unwrap())
                             }
                             _ => break,
                         }
@@ -215,7 +226,7 @@ impl<'a> Lexer<'a> {
                 ')' => Token::RightParen,
                 '*' => match self.chars.peek() {
                     Some('*') => {
-                        self.next();
+                        self.consume();
                         Token::Operator(Operator::Pow)
                     }
                     _ => Token::Operator(Operator::Mul)
@@ -224,13 +235,13 @@ impl<'a> Lexer<'a> {
                 '^' => Token::Operator(Operator::Pow),
                 '+' => Token::Operator(Operator::Add),
                 '-' => Token::Operator(Operator::Sub),
-                _ => return Err(ParseError::UnexpectedToken(self.position()))
+                _ => return Err(ParseError::UnexpectedToken(self.current_position()))
             },
             None => Token::EOF
         })
     }
 
-    fn position(&self) -> Position {
+    fn current_position(&self) -> Position {
         Position(self.line, self.column)
     }
 }
@@ -243,9 +254,7 @@ mod tests {
     fn test_lex() {
         const INPUT: &str = "22_00 + 3e2";
         let mut lexer = Lexer::new(INPUT);
-        assert_eq!(Token::Number(2200f64), lexer.lex().unwrap());
-        assert_eq!(Token::Operator(Operator::Add), lexer.lex().unwrap());
-        assert_eq!(Token::Number(300f64), lexer.lex().unwrap());
-        assert_eq!(Token::EOF, lexer.lex().unwrap());
+        let tokens = lexer.collect::<Vec<Token>>();
+        assert_eq!(tokens, vec![Token::Number(2200f64), Token::Operator(Operator::Add), Token::Number(300f64)])
     }
 }
