@@ -1,7 +1,4 @@
 use crate::lexer::{Lexer, Token, Operator, ParseError};
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 
 #[macro_export]
 macro_rules! map {
@@ -13,12 +10,11 @@ macro_rules! map {
 }
 
 pub struct Parser<'a> {
-    lexer: Lexer<'a>,
-    precedences: HashMap<Operator, (u8, Associativity)>
+    lexer: Lexer<'a>
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Associativity {
+pub enum Associativity {
     Left,
     Right
 }
@@ -26,47 +22,27 @@ enum Associativity {
 impl<'a> Parser<'a> {
     pub fn new(src: &'a str) -> Parser {
         Parser {
-            lexer: Lexer::new(src),
-            precedences: map!(
-                Operator::Add => (2, Associativity::Left),
-                Operator::Sub => (2, Associativity::Left),
-                Operator::Mul => (3, Associativity::Left),
-                Operator::Div => (3, Associativity::Left),
-                Operator::Pow => (4, Associativity::Right)
-            )
+            lexer: Lexer::new(src)
         }
     }
 
     pub fn compute(&mut self) -> Result<f64, ParseError> {
         let mut stack: Vec<f64> = Vec::new();
-        let rpn_stream = self.to_rpn()?;
+        let rpn_stream = self.postfix()?;
         for token in rpn_stream {
             match token {
                 Token::Number(n) => stack.push(n),
                 Token::Operator(op) => {
-                    // WIP: remove these ugly match arms
                     let n1 = stack.pop().ok_or(ParseError::InvalidExpression)?;
                     let n2 = stack.pop().ok_or(ParseError::InvalidExpression)?;
-                    // WIP: a better way to do this
-                    let result: f64;
-                    match op {
-                        Operator::Add => {
-                            result = n2 + n1;
-                        }
-                        Operator::Mul => {
-                            result = n2 * n1;
-                        }
-                        Operator::Sub => {
-                            result = n2 - n1;
-                        }
-                        Operator::Div => {
-                            result = n2 / n1;
-                        }
-                        Operator::Pow => {
-                            result = n2.powf(n1)
-                        }
-                        _ => unreachable!()
-                    }
+                    use Operator::*;
+                    let result = match op {
+                        Add => n2 + n1,
+                        Sub => n2 - n1,
+                        Mul => n2 * n1,
+                        Div => n2 / n1,
+                        Pow => n2.powf(n1)
+                    };
                     stack.push(result);
                 }
                 _ => unreachable!()
@@ -75,7 +51,7 @@ impl<'a> Parser<'a> {
         Ok(stack.pop().unwrap())
     }
 
-    fn to_rpn(&mut self) -> Result<Vec<Token>, ParseError> {
+    fn postfix(&mut self) -> Result<Vec<Token>, ParseError> {
         let mut output: Vec<Token> = Vec::new();
         let mut stack: Vec<Token> = Vec::new();
 
@@ -85,14 +61,14 @@ impl<'a> Parser<'a> {
             match token {
                 Number(_) => output.push(token),
                 Operator(op1) => {
-                    while stack.len() > 0 {
-                        let (o1_prec, o1_assoc) = self.precedences.get(&op1).unwrap();
+                    while !stack.is_empty() {
+                        let (o1_prec, o1_assoc) = op1.precedence();
                         match stack.last() {
                             Some(Operator(op2)) => {
-                                let (o2_prec,_) = self.precedences.get(op2).unwrap();
-                                if (*o1_assoc == Associativity::Left &&
+                                let (o2_prec,_) = op2.precedence();
+                                if (o1_assoc == Associativity::Left &&
                                     o1_prec <= o2_prec) ||
-                                    (*o1_assoc == Associativity::Right &&
+                                    (o1_assoc == Associativity::Right &&
                                     o1_prec < o2_prec) {
                                         output.push(stack.pop().unwrap());
                                 } else {
@@ -121,7 +97,7 @@ impl<'a> Parser<'a> {
                 }
                 EOF => {
                     // pop entire stack to output
-                    while stack.len() > 0 {
+                    while !stack.is_empty() {
                         let op = stack.pop();
                         match op {
                             Some(LeftParen) => (),
@@ -131,7 +107,6 @@ impl<'a> Parser<'a> {
                     }
                     break;
                 }
-                _ => unreachable!()
             }
         }
 
@@ -146,7 +121,7 @@ mod tests {
     #[test]
     fn test_rpn() {
         let mut parser = Parser::new("3 + (2 ^ 3)");
-        let postfix = parser.to_rpn().unwrap();
+        let postfix = parser.postfix().unwrap();
         // transforms this to postfix, so check operator positions
         assert_eq!(postfix.len(), 5);
         assert_eq!(postfix[3], Token::Operator(Operator::Pow));

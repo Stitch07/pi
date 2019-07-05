@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use std::iter::Peekable;
 use std::str::Chars;
-use std::error;
 use std::fmt;
 use std::collections::HashMap;
 use std::f64::consts;
+use crate::parser::Associativity;
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, Copy)]
 pub enum Operator {
@@ -13,6 +13,20 @@ pub enum Operator {
     Mul,
     Div,
     Pow
+}
+
+impl Operator {
+    pub fn precedence(self) -> (u32, Associativity) {
+        use Associativity::*;
+        use Operator::*;
+        match self {
+            Add => (2, Left),
+            Sub => (2, Left),
+            Mul => (3, Left),
+            Div => (3, Left),
+            Pow => (4, Right)
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -36,19 +50,13 @@ pub enum ParseError {
     InvalidExpression
 }
 
-impl error::Error for ParseError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return match self {
+        match self {
             ParseError::UnexpectedToken(pos) => write!(f, "unexpected token at {}:{}", pos.0 + 1, pos.1),
             ParseError::UnbalancedParens => write!(f, "unbalanced parentheses found"),
             ParseError::InvalidExpression => write!(f, "an invalid expression was provided")
-        };
+        }
     }
 }
 
@@ -79,7 +87,7 @@ impl<'a> Lexer<'a> {
         } else {
             self.column += 1;
         }
-        return c;
+        c
     }
 
     pub fn lex(&mut self) -> Result<Token, ParseError> {
@@ -197,9 +205,10 @@ impl<'a> Lexer<'a> {
                             _ => break,
                         }
                     }
-                    match self.constants.contains_key(ident.as_str()) {
-                        true => Token::Number(self.constants.get(ident.as_str()).unwrap().to_owned()),
-                        false => return Err(ParseError::UnexpectedToken(start_pos))
+                    if self.constants.contains_key(ident.as_str()) {
+                        Token::Number(self.constants.get(ident.as_str()).unwrap().to_owned())
+                    } else {
+                        return Err(ParseError::UnexpectedToken(start_pos));
                     }
                 }
                 '(' => Token::LeftParen,
