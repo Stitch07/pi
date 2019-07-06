@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-use std::iter::Peekable;
-use std::str::Chars;
-use std::fmt;
+use crate::parser::Associativity;
 use std::collections::HashMap;
 use std::f64::consts;
-use crate::parser::Associativity;
+use std::fmt;
+use std::iter::Peekable;
+use std::str::Chars;
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, Copy)]
 pub enum Operator {
@@ -12,7 +12,7 @@ pub enum Operator {
     Sub,
     Mul,
     Div,
-    Pow
+    Pow,
 }
 
 impl Operator {
@@ -24,7 +24,7 @@ impl Operator {
             Sub => (2, Left),
             Mul => (3, Left),
             Div => (3, Left),
-            Pow => (4, Right)
+            Pow => (4, Right),
         }
     }
 }
@@ -37,7 +37,7 @@ pub enum Token {
     LeftParen,
 
     Operator(Operator),
-    EOF
+    EOF,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -47,15 +47,17 @@ pub struct Position(usize, usize);
 pub enum ParseError {
     UnexpectedToken(Position),
     UnbalancedParens,
-    InvalidExpression
+    InvalidExpression,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParseError::UnexpectedToken(pos) => write!(f, "unexpected token at {}:{}", pos.0 + 1, pos.1),
+            ParseError::UnexpectedToken(pos) => {
+                write!(f, "unexpected token at {}:{}", pos.0 + 1, pos.1)
+            }
             ParseError::UnbalancedParens => write!(f, "unbalanced parentheses found"),
-            ParseError::InvalidExpression => write!(f, "an invalid expression was provided")
+            ParseError::InvalidExpression => write!(f, "an invalid expression was provided"),
         }
     }
 }
@@ -64,16 +66,17 @@ pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     line: usize,
     column: usize,
-    constants: HashMap<&'static str, f64>
+    constants: HashMap<&'static str, f64>,
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = Result<Token, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.lex() {
-            Ok(Token::EOF) | Err(_) => None,
-            Ok(token) => Some(token),
+            Ok(Token::EOF) => None,
+            Err(e) => Some(Err(e)),
+            Ok(token) => Some(Ok(token)),
         }
     }
 }
@@ -86,7 +89,7 @@ impl<'a> Lexer<'a> {
             column: 0,
             constants: map!(
                 "pi" => consts::PI
-            )
+            ),
         }
     }
 
@@ -113,7 +116,7 @@ impl<'a> Lexer<'a> {
                             Some('x') => Some(16),
                             Some('o') => Some(8),
                             Some('b') => Some(2),
-                            _ => None
+                            _ => None,
                         };
                         if let Some(rdx) = radix {
                             self.consume();
@@ -126,12 +129,12 @@ impl<'a> Lexer<'a> {
                                     '8' | '9' | 'a'...'f' | 'A'...'F' if rdx > 8 => {
                                         num.push(self.consume().unwrap());
                                     }
-                                    _ => break
+                                    _ => break,
                                 }
-                            };
+                            }
                             let n = match u64::from_str_radix(&num, rdx) {
                                 Ok(n) => n,
-                                Err(_) => return Err(ParseError::UnexpectedToken(start_pos))
+                                Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
                             };
                             return Ok(Token::Number(n as f64));
                         } else {
@@ -150,7 +153,9 @@ impl<'a> Lexer<'a> {
                                 self.consume().unwrap();
                                 if self.chars.peek() == Some(&'_') {
                                     self.consume().unwrap();
-                                    return Err(ParseError::UnexpectedToken(self.current_position()));
+                                    return Err(ParseError::UnexpectedToken(
+                                        self.current_position(),
+                                    ));
                                 }
                                 continue;
                             }
@@ -181,29 +186,30 @@ impl<'a> Lexer<'a> {
                                     one_dot = true;
                                     mantissa.push(self.consume().unwrap());
                                     if self.chars.peek() == Some(&'_') {
-                                        return Err(ParseError::UnexpectedToken(self.current_position()));
+                                        return Err(ParseError::UnexpectedToken(
+                                            self.current_position(),
+                                        ));
                                     }
                                 } else {
                                     break;
                                 }
                             }
                             _ => break,
-                         }
+                        }
                     }
                     match mantissa.parse::<f64>() {
-                       Ok(n) => {
-                           if in_exp {
-                               match exponent.parse::<i32>() {
-                                   Ok(e) => Token::Number(n * (10f64.powi(e) as f64)),
-                                   Err(_) => return Err(ParseError::UnexpectedToken(start_pos))
-                               }
-                           } else {
-                               Token::Number(n)
-                           }
-                       }
-                        Err(_) => return Err(ParseError::UnexpectedToken(start_pos))
+                        Ok(n) => {
+                            if in_exp {
+                                match exponent.parse::<i32>() {
+                                    Ok(e) => Token::Number(n * (10f64.powi(e) as f64)),
+                                    Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
+                                }
+                            } else {
+                                Token::Number(n)
+                            }
+                        }
+                        Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
                     }
-
                 }
                 'a'...'z' | 'A'...'Z' => {
                     let mut ident = c.to_string();
@@ -229,15 +235,15 @@ impl<'a> Lexer<'a> {
                         self.consume();
                         Token::Operator(Operator::Pow)
                     }
-                    _ => Token::Operator(Operator::Mul)
+                    _ => Token::Operator(Operator::Mul),
                 },
                 '/' => Token::Operator(Operator::Div),
                 '^' => Token::Operator(Operator::Pow),
                 '+' => Token::Operator(Operator::Add),
                 '-' => Token::Operator(Operator::Sub),
-                _ => return Err(ParseError::UnexpectedToken(self.current_position()))
+                _ => return Err(ParseError::UnexpectedToken(self.current_position())),
             },
-            None => Token::EOF
+            None => Token::EOF,
         })
     }
 
@@ -253,8 +259,15 @@ mod tests {
     #[test]
     fn test_lex() {
         const INPUT: &str = "22_00 + 3e2";
-        let mut lexer = Lexer::new(INPUT);
-        let tokens = lexer.collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![Token::Number(2200f64), Token::Operator(Operator::Add), Token::Number(300f64)])
+        let lexer = Lexer::new(INPUT);
+        let tokens = lexer.map(|r| r.unwrap()).collect::<Vec<Token>>();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(2200f64),
+                Token::Operator(Operator::Add),
+                Token::Number(300f64)
+            ]
+        )
     }
 }

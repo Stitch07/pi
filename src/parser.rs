@@ -1,4 +1,4 @@
-use crate::lexer::{Lexer, Token, Operator, ParseError};
+use crate::lexer::{Lexer, Operator, ParseError, Token};
 
 #[macro_export]
 macro_rules! map {
@@ -10,19 +10,19 @@ macro_rules! map {
 }
 
 pub struct Parser<'a> {
-    lexer: Lexer<'a>
+    lexer: Lexer<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Associativity {
     Left,
-    Right
+    Right,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(src: &'a str) -> Parser {
         Parser {
-            lexer: Lexer::new(src)
+            lexer: Lexer::new(src),
         }
     }
 
@@ -41,13 +41,13 @@ impl<'a> Parser<'a> {
                         Sub => n2 - n1,
                         Mul => n2 * n1,
                         Div => n2 / n1,
-                        Pow => n2.powf(n1)
+                        Pow => n2.powf(n1),
                     };
                     stack.push(result);
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
-        };
+        }
         Ok(stack.pop().unwrap())
     }
 
@@ -56,8 +56,7 @@ impl<'a> Parser<'a> {
         let mut stack: Vec<Token> = Vec::new();
 
         use Token::*;
-        loop {
-            let token = self.lexer.lex()?;
+        while let Some(token) = self.lexer.next().transpose()? {
             match token {
                 Number(_) => output.push(token),
                 Operator(op1) => {
@@ -65,48 +64,44 @@ impl<'a> Parser<'a> {
                         let (o1_prec, o1_assoc) = op1.precedence();
                         match stack.last() {
                             Some(Operator(op2)) => {
-                                let (o2_prec,_) = op2.precedence();
-                                if (o1_assoc == Associativity::Left &&
-                                    o1_prec <= o2_prec) ||
-                                    (o1_assoc == Associativity::Right &&
-                                    o1_prec < o2_prec) {
-                                        output.push(stack.pop().unwrap());
+                                let (o2_prec, _) = op2.precedence();
+                                if (o1_assoc == Associativity::Left && o1_prec <= o2_prec)
+                                    || (o1_assoc == Associativity::Right && o1_prec < o2_prec)
+                                {
+                                    output.push(stack.pop().unwrap());
                                 } else {
-                                    break
+                                    break;
                                 }
                             }
-                            _ => break
+                            _ => break,
                         }
                     }
                     stack.push(token.clone());
-                },
+                }
                 LeftParen => stack.push(token),
-                RightParen => {
-                    loop {
-                        match stack.last() {
-                            Some(&LeftParen) => {
-                                stack.pop().unwrap();
-                                break;
-                            }
-                            None => {
-                                return Err(ParseError::UnbalancedParens);
-                            }
-                            _ => output.push(stack.pop().unwrap())
+                RightParen => loop {
+                    match stack.last() {
+                        Some(&LeftParen) => {
+                            stack.pop().unwrap();
+                            break;
                         }
-                    }
-                }
-                EOF => {
-                    // pop entire stack to output
-                    while !stack.is_empty() {
-                        let op = stack.pop();
-                        match op {
-                            Some(LeftParen) => (),
-                            Some(RightParen) => (),
-                            _ => output.push(op.unwrap())
+                        None => {
+                            return Err(ParseError::UnbalancedParens);
                         }
+                        _ => output.push(stack.pop().unwrap()),
                     }
-                    break;
-                }
+                },
+                EOF => unreachable!(),
+            }
+        }
+
+        // pop entire stack to output
+        while !stack.is_empty() {
+            let op = stack.pop();
+            match op {
+                Some(LeftParen) => (),
+                Some(RightParen) => (),
+                _ => output.push(op.unwrap()),
             }
         }
 

@@ -17,7 +17,7 @@ fn main() {
         let mut parser = Parser::new(&input);
         match parser.compute() {
             Ok(result) => println!("{}", result),
-            Err(e) => println!("an error occurred: {}", e)
+            Err(e) => println!("an error occurred: {}", e),
         }
     }
 }
