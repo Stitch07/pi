@@ -3,6 +3,7 @@ use std::io::{self, BufRead, Write};
 #[macro_use]
 mod parser;
 mod lexer;
+mod math;
 
 use parser::Parser;
 

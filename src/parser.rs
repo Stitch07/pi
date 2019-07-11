@@ -1,5 +1,6 @@
 use crate::lexer::{Lexer, Operator, ParseError, Token, UnaryOperator};
 use std::iter::Peekable;
+use crate::math::factorial;
 
 #[macro_export]
 macro_rules! map {
@@ -33,6 +34,7 @@ fn get_precedence(token: &Token) -> (usize, Associativity) {
         },
         Token::UnaryOperator(op) => match op {
             UnaryOperator::Sub => (5, Right),
+            UnaryOperator::Factorial => (6, Right)
         },
         _ => unreachable!(),
     }
@@ -69,6 +71,13 @@ impl<'a> Parser<'a> {
                     use UnaryOperator::*;
                     let result = match op {
                         Sub => -n1,
+                        Factorial => {
+                            // factorial on negative numbers is invalid
+                            if n1.is_sign_negative() {
+                                return Err(ParseError::InvalidExpression)
+                            }
+                            factorial(n1 as i64) as f64
+                        }
                     };
                     stack.push(result);
                 }
@@ -155,8 +164,8 @@ mod tests {
         let mut parser = Parser::new("3 + -4");
         let postfix = parser.postfix().unwrap();
         let expected = vec![
-            Token::Number(3f64),
-            Token::Number(4f64),
+            Token::Number(3.0),
+            Token::Number(4.0),
             Token::UnaryOperator(UnaryOperator::Sub),
             Token::Operator(Operator::Add),
         ];
@@ -167,13 +176,13 @@ mod tests {
     fn test_compute() {
         let mut parser = Parser::new("3 + 4 * (2 - 1)");
         let result = parser.compute().unwrap();
-        assert_eq!(result, 7f64);
+        assert_eq!(result, 7.0);
     }
 
     #[test]
     fn test_unary() {
         let mut parser = Parser::new("3 - -3");
         let result = parser.compute().unwrap();
-        assert_eq!(result, 6f64);
+        assert_eq!(result, 6.0);
     }
 }

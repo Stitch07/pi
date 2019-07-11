@@ -17,6 +17,7 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UnaryOperator {
     Sub,
+    Factorial
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -100,109 +101,7 @@ impl<'a> Lexer<'a> {
         Ok(match self.consume() {
             Some(c) => match c {
                 ' ' | '\t' | '\n' => self.lex()?,
-                '0'..='9' => {
-                    // leading 0 indicates different base
-                    // 0x => hexadecimal, 0b => binary, 0o => octal
-                    if c == '0' {
-                        let radix = match self.chars.peek() {
-                            Some('x') => Some(16),
-                            Some('o') => Some(8),
-                            Some('b') => Some(2),
-                            _ => None,
-                        };
-                        if let Some(rdx) = radix {
-                            self.consume();
-                            let mut num = String::new();
-                            let start_pos = self.current_position();
-                            while let Some(c) = self.chars.peek() {
-                                match c {
-                                    '0' | '1' => num.push(self.consume().unwrap()),
-                                    '2'...'7' if rdx > 2 => num.push(self.consume().unwrap()),
-                                    '8' | '9' | 'a'...'f' | 'A'...'F' if rdx > 8 => {
-                                        num.push(self.consume().unwrap());
-                                    }
-                                    _ => break,
-                                }
-                            }
-                            let n = match u64::from_str_radix(&num, rdx) {
-                                Ok(n) => n,
-                                Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
-                            };
-                            return Ok(Token::Number(n as f64));
-                        } else {
-                            return Ok(Token::Number(0f64));
-                        }
-                    }
-                    let start_pos = self.current_position();
-                    let mut mantissa = c.to_string();
-                    let mut exponent = String::new();
-                    let mut in_exp = false;
-                    let mut one_dot = false;
-                    // numbers are f64s by default
-                    while let Some(c) = self.chars.peek() {
-                        match c {
-                            '_' => {
-                                self.consume().unwrap();
-                                if self.chars.peek() == Some(&'_') {
-                                    self.consume().unwrap();
-                                    return Err(ParseError::UnexpectedToken(
-                                        self.current_position(),
-                                    ));
-                                }
-                                continue;
-                            }
-                            '0'..='9' => {
-                                if in_exp {
-                                    exponent.push(self.consume().unwrap());
-                                } else {
-                                    mantissa.push(self.consume().unwrap());
-                                }
-                            }
-                            'e' if !in_exp => {
-                                self.consume().unwrap();
-                                in_exp = true;
-                                match self.chars.peek() {
-                                    Some('-') => {
-                                        self.consume().unwrap();
-                                        exponent.push('-');
-                                    }
-                                    Some('+') => {
-                                        self.consume().unwrap();
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            '.' if !in_exp => {
-                                if !one_dot {
-                                    one_dot = true;
-                                    mantissa.push(self.consume().unwrap());
-                                    if self.chars.peek() == Some(&'_') {
-                                        return Err(ParseError::UnexpectedToken(
-                                            self.current_position(),
-                                        ));
-                                    }
-                                } else {
-                                    break;
-                                }
-                            }
-                            _ => break,
-                        }
-                    }
-                    match mantissa.parse::<f64>() {
-                        Ok(n) => {
-                            if in_exp {
-                                match exponent.parse::<i32>() {
-                                    Ok(e) => Token::Number(n * (10f64.powi(e) as f64)),
-                                    Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
-                                }
-                            } else {
-                                Token::Number(n)
-                            }
-                        }
-                        Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
-                    }
-                }
+                '0'...'9' => Token::Number(self.consume_number(c)?),
                 'a'...'z' | 'A'...'Z' => {
                     let mut ident = c.to_string();
                     let start_pos = self.current_position();
@@ -238,6 +137,7 @@ impl<'a> Lexer<'a> {
                     }
                     return Ok(Token::Operator(Operator::Sub));
                 }
+                '!' => Token::UnaryOperator(UnaryOperator::Factorial),
                 _ => return Err(ParseError::UnexpectedToken(self.current_position())),
             },
             None => Token::EOF,
@@ -245,13 +145,118 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek_number(&mut self) -> bool {
-        while let Some(&c) = self.chars.peek() {
+        if let Some(&c) = self.chars.peek() {
             match c {
                 '1'...'9' => return true,
-                _ => return false,
-            }
+                _ => return false
+            };
         }
         false
+    }
+
+    fn consume_number(&mut self, c: char) -> Result<f64, ParseError> {
+        // leading 0 indicates different base
+        // 0x => hexadecimal, 0b => binary, 0o => octal
+        if c == '0' {
+            let radix = match self.chars.peek() {
+                Some('x') => Some(16),
+                Some('o') => Some(8),
+                Some('b') => Some(2),
+                _ => None,
+            };
+            if let Some(rdx) = radix {
+                self.consume();
+                let mut num = String::new();
+                let start_pos = self.current_position();
+                while let Some(c) = self.chars.peek() {
+                    match c {
+                        '0' | '1' => num.push(self.consume().unwrap()),
+                        '2'...'7' if rdx > 2 => num.push(self.consume().unwrap()),
+                        '8' | '9' | 'a'...'f' | 'A'...'F' if rdx > 8 => {
+                            num.push(self.consume().unwrap());
+                        }
+                        _ => break,
+                    }
+                }
+                let n = match u64::from_str_radix(&num, rdx) {
+                    Ok(n) => n,
+                    Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
+                };
+                return Ok(n as f64);
+            } else {
+                return Ok(0.0);
+            }
+        }
+
+        let start_pos = self.current_position();
+        let mut mantissa = c.to_string();
+        let mut exponent = String::new();
+        let mut in_exp = false;
+        let mut one_dot = false;
+        // numbers are f64s by default
+        while let Some(c) = self.chars.peek() {
+            match c {
+                '_' => {
+                    self.consume().unwrap();
+                    if self.chars.peek() == Some(&'_') {
+                        self.consume().unwrap();
+                        return Err(ParseError::UnexpectedToken(
+                            self.current_position(),
+                        ));
+                    }
+                    continue;
+                }
+                '0'...'9' => {
+                    if in_exp {
+                        exponent.push(self.consume().unwrap());
+                    } else {
+                        mantissa.push(self.consume().unwrap());
+                    }
+                }
+                'e' if !in_exp => {
+                    self.consume().unwrap();
+                    in_exp = true;
+                    match self.chars.peek() {
+                        Some('-') => {
+                            self.consume().unwrap();
+                            exponent.push('-');
+                        }
+                        Some('+') => {
+                            self.consume().unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+
+                '.' if !in_exp => {
+                    if !one_dot {
+                        one_dot = true;
+                        mantissa.push(self.consume().unwrap());
+                        if self.chars.peek() == Some(&'_') {
+                            return Err(ParseError::UnexpectedToken(
+                                self.current_position(),
+                            ));
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        match mantissa.parse::<f64>() {
+            Ok(n) => {
+                if in_exp {
+                    match exponent.parse::<i32>() {
+                        Ok(e) => Ok(n * (10f64.powi(e) as f64)),
+                        Err(_) => Err(ParseError::UnexpectedToken(start_pos)),
+                    }
+                } else {
+                    Ok(n)
+                }
+            }
+            Err(_) => return Err(ParseError::UnexpectedToken(start_pos)),
+        }
     }
 
     fn current_position(&self) -> Position {
@@ -271,9 +276,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::Number(2200f64),
+                Token::Number(2200.0),
                 Token::Operator(Operator::Add),
-                Token::Number(300f64)
+                Token::Number(300.0)
             ]
         )
     }
@@ -287,9 +292,9 @@ mod tests {
             tokens,
             vec![
                 Token::UnaryOperator(UnaryOperator::Sub),
-                Token::Number(3f64),
+                Token::Number(3.0),
                 Token::Operator(Operator::Add),
-                Token::Number(2f64)
+                Token::Number(2.0)
             ]
         )
     }
