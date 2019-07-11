@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use crate::parser::Associativity;
 use std::collections::HashMap;
 use std::f64::consts;
 use std::fmt;
@@ -15,18 +14,9 @@ pub enum Operator {
     Pow,
 }
 
-impl Operator {
-    pub fn precedence(self) -> (u32, Associativity) {
-        use Associativity::*;
-        use Operator::*;
-        match self {
-            Add => (2, Left),
-            Sub => (2, Left),
-            Mul => (3, Left),
-            Div => (3, Left),
-            Pow => (4, Right),
-        }
-    }
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum UnaryOperator {
+    Sub
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -37,6 +27,7 @@ pub enum Token {
     LeftParen,
 
     Operator(Operator),
+    UnaryOperator(UnaryOperator),
     EOF,
 }
 
@@ -62,6 +53,7 @@ impl fmt::Display for ParseError {
     }
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     line: usize,
@@ -240,11 +232,26 @@ impl<'a> Lexer<'a> {
                 '/' => Token::Operator(Operator::Div),
                 '^' => Token::Operator(Operator::Pow),
                 '+' => Token::Operator(Operator::Add),
-                '-' => Token::Operator(Operator::Sub),
+                '-' => {
+                    if self.peek_number() {
+                        return Ok(Token::UnaryOperator(UnaryOperator::Sub));
+                    }
+                    return Ok(Token::Operator(Operator::Sub));
+                },
                 _ => return Err(ParseError::UnexpectedToken(self.current_position())),
             },
             None => Token::EOF,
         })
+    }
+
+    fn peek_number(&mut self) -> bool {
+        while let Some(&c) = self.chars.peek() {
+            match c {
+                '1'...'9' => return true,
+                _ => return false
+            }
+        };
+        false
     }
 
     fn current_position(&self) -> Position {
@@ -258,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_lex() {
-        const INPUT: &str = "22_00 + 3e2";
+        const INPUT: &str = "22e2 + 3_00";
         let lexer = Lexer::new(INPUT);
         let tokens = lexer.map(|r| r.unwrap()).collect::<Vec<Token>>();
         assert_eq!(
@@ -267,6 +274,22 @@ mod tests {
                 Token::Number(2200f64),
                 Token::Operator(Operator::Add),
                 Token::Number(300f64)
+            ]
+        )
+    }
+
+    #[test]
+    fn test_unary() {
+        const INPUT: &str = "-3 + 2";
+        let lexer = Lexer::new(INPUT);
+        let tokens = lexer.map(|r| r.unwrap()).collect::<Vec<Token>>();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::UnaryOperator(UnaryOperator::Sub),
+                Token::Number(3f64),
+                Token::Operator(Operator::Add),
+                Token::Number(2f64)
             ]
         )
     }

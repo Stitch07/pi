@@ -1,4 +1,5 @@
-use crate::lexer::{Lexer, Operator, ParseError, Token};
+use crate::lexer::{Lexer, Operator, ParseError, Token, UnaryOperator};
+use std::iter::Peekable;
 
 #[macro_export]
 macro_rules! map {
@@ -10,19 +11,41 @@ macro_rules! map {
 }
 
 pub struct Parser<'a> {
-    lexer: Lexer<'a>,
+    lexer: Peekable<Lexer<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Associativity {
     Left,
-    Right,
+    Right
+}
+
+fn get_precedence(token: &Token) -> (usize, Associativity) {
+    use Associativity::*;
+    use Operator::*;
+    match *token {
+        Token::Operator(op) => {
+            match op {
+                Add => (2, Left),
+                Sub => (2, Left),
+                Mul => (3, Left),
+                Div => (3, Left),
+                Pow => (4, Right)
+            }
+        }
+        Token::UnaryOperator(op) => {
+            match op {
+                UnaryOperator::Sub => (5, Right)
+            }
+        }
+        _ => unreachable!()
+    }
 }
 
 impl<'a> Parser<'a> {
     pub fn new(src: &'a str) -> Parser {
         Parser {
-            lexer: Lexer::new(src),
+            lexer: Lexer::new(src).peekable(),
         }
     }
 
@@ -45,6 +68,14 @@ impl<'a> Parser<'a> {
                     };
                     stack.push(result);
                 }
+                Token::UnaryOperator(op) => {
+                    let n1 = stack.pop().ok_or(ParseError::InvalidExpression)?;
+                    use UnaryOperator::*;
+                    let result = match op {
+                        Sub => -n1
+                    };
+                    stack.push(result);
+                }
                 _ => unreachable!(),
             }
         }
@@ -59,12 +90,12 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
                 Number(_) => output.push(token),
-                Operator(op1) => {
+                UnaryOperator(_) | Operator(_) => {
                     while !stack.is_empty() {
-                        let (o1_prec, o1_assoc) = op1.precedence();
+                        let (o1_prec, o1_assoc) = get_precedence(&token);
                         match stack.last() {
-                            Some(Operator(op2)) => {
-                                let (o2_prec, _) = op2.precedence();
+                            Some(Operator(_)) => {
+                                let (o2_prec, _) = get_precedence(&token);
                                 if (o1_assoc == Associativity::Left && o1_prec <= o2_prec)
                                     || (o1_assoc == Associativity::Right && o1_prec < o2_prec)
                                 {
@@ -90,7 +121,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => output.push(stack.pop().unwrap()),
                     }
-                },
+                }
                 EOF => unreachable!(),
             }
         }
@@ -124,9 +155,24 @@ mod tests {
     }
 
     #[test]
+    fn test_rpn_unary() {
+        let mut parser = Parser::new("3 + -4");
+        let postfix = parser.postfix().unwrap();
+        let expected = vec![Token::Number(3f64), Token::Number(4f64), Token::UnaryOperator(UnaryOperator::Sub), Token::Operator(Operator::Add)];
+        assert_eq!(expected, postfix);
+    }
+
+    #[test]
     fn test_compute() {
         let mut parser = Parser::new("3 + 4 * (2 - 1)");
         let result = parser.compute().unwrap();
         assert_eq!(result, 7f64);
+    }
+
+    #[test]
+    fn test_unary() {
+        let mut parser = Parser::new("3 - -3");
+        let result = parser.compute().unwrap();
+        assert_eq!(result, 6f64);
     }
 }
