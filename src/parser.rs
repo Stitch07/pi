@@ -17,28 +17,24 @@ pub struct Parser<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Associativity {
     Left,
-    Right
+    Right,
 }
 
 fn get_precedence(token: &Token) -> (usize, Associativity) {
     use Associativity::*;
     use Operator::*;
     match *token {
-        Token::Operator(op) => {
-            match op {
-                Add => (2, Left),
-                Sub => (2, Left),
-                Mul => (3, Left),
-                Div => (3, Left),
-                Pow => (4, Right)
-            }
-        }
-        Token::UnaryOperator(op) => {
-            match op {
-                UnaryOperator::Sub => (5, Right)
-            }
-        }
-        _ => unreachable!()
+        Token::Operator(op) => match op {
+            Add => (2, Left),
+            Sub => (2, Left),
+            Mul => (3, Left),
+            Div => (3, Left),
+            Pow => (4, Right),
+        },
+        Token::UnaryOperator(op) => match op {
+            UnaryOperator::Sub => (5, Right),
+        },
+        _ => unreachable!(),
     }
 }
 
@@ -72,7 +68,7 @@ impl<'a> Parser<'a> {
                     let n1 = stack.pop().ok_or(ParseError::InvalidExpression)?;
                     use UnaryOperator::*;
                     let result = match op {
-                        Sub => -n1
+                        Sub => -n1,
                     };
                     stack.push(result);
                 }
@@ -121,7 +117,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => output.push(stack.pop().unwrap()),
                     }
-                }
+                },
                 EOF => unreachable!(),
             }
         }
@@ -158,7 +154,12 @@ mod tests {
     fn test_rpn_unary() {
         let mut parser = Parser::new("3 + -4");
         let postfix = parser.postfix().unwrap();
-        let expected = vec![Token::Number(3f64), Token::Number(4f64), Token::UnaryOperator(UnaryOperator::Sub), Token::Operator(Operator::Add)];
+        let expected = vec![
+            Token::Number(3f64),
+            Token::Number(4f64),
+            Token::UnaryOperator(UnaryOperator::Sub),
+            Token::Operator(Operator::Add),
+        ];
         assert_eq!(expected, postfix);
     }
 

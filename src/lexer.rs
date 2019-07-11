@@ -16,7 +16,7 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UnaryOperator {
-    Sub
+    Sub,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -237,7 +237,7 @@ impl<'a> Lexer<'a> {
                         return Ok(Token::UnaryOperator(UnaryOperator::Sub));
                     }
                     return Ok(Token::Operator(Operator::Sub));
-                },
+                }
                 _ => return Err(ParseError::UnexpectedToken(self.current_position())),
             },
             None => Token::EOF,
@@ -248,9 +248,9 @@ impl<'a> Lexer<'a> {
         while let Some(&c) = self.chars.peek() {
             match c {
                 '1'...'9' => return true,
-                _ => return false
+                _ => return false,
             }
-        };
+        }
         false
     }
 
