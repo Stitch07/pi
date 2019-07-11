@@ -1,6 +1,6 @@
 use crate::lexer::{Lexer, Operator, ParseError, Token, UnaryOperator};
-use std::iter::Peekable;
 use crate::math::factorial;
+use std::iter::Peekable;
 
 #[macro_export]
 macro_rules! map {
@@ -34,7 +34,7 @@ fn get_precedence(token: &Token) -> (usize, Associativity) {
         },
         Token::UnaryOperator(op) => match op {
             UnaryOperator::Sub => (5, Right),
-            UnaryOperator::Factorial => (6, Right)
+            UnaryOperator::Factorial => (6, Right),
         },
         _ => unreachable!(),
     }
@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
                         Factorial => {
                             // factorial on negative numbers is invalid
                             if n1.is_sign_negative() {
-                                return Err(ParseError::InvalidExpression)
+                                return Err(ParseError::InvalidExpression);
                             }
                             factorial(n1 as i64) as f64
                         }

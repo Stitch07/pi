@@ -17,7 +17,7 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UnaryOperator {
     Sub,
-    Factorial
+    Factorial,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -148,7 +148,7 @@ impl<'a> Lexer<'a> {
         if let Some(&c) = self.chars.peek() {
             match c {
                 '1'...'9' => return true,
-                _ => return false
+                _ => return false,
             };
         }
         false
@@ -200,9 +200,7 @@ impl<'a> Lexer<'a> {
                     self.consume().unwrap();
                     if self.chars.peek() == Some(&'_') {
                         self.consume().unwrap();
-                        return Err(ParseError::UnexpectedToken(
-                            self.current_position(),
-                        ));
+                        return Err(ParseError::UnexpectedToken(self.current_position()));
                     }
                     continue;
                 }
@@ -233,9 +231,7 @@ impl<'a> Lexer<'a> {
                         one_dot = true;
                         mantissa.push(self.consume().unwrap());
                         if self.chars.peek() == Some(&'_') {
-                            return Err(ParseError::UnexpectedToken(
-                                self.current_position(),
-                            ));
+                            return Err(ParseError::UnexpectedToken(self.current_position()));
                         }
                     } else {
                         break;
